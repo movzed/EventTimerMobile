@@ -4,7 +4,7 @@
   "description": "Timer para ponencias y eventos",
   "start_url": "control.html",
   "scope": "./",
-  "display": "standalone",
+  "display": "browser",
   "orientation": "any",
   "background_color": "#000000",
   "theme_color": "#0d1117",
