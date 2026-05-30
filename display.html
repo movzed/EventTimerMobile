@@ -228,6 +228,8 @@ bus.on(msg => {
     logoVerSeen = msg.logoVer;
     if (msg.dataUrl) { ET.Logo.set(msg.dataUrl); logoLoaded = false; setLogo(msg.dataUrl); }
     render();
+  } else if (msg.type === 'cmd' && msg.action === 'fullscreen') {
+    enterFullscreen();
   }
 });
 
@@ -247,6 +249,31 @@ function toggleFullscreen() {
   } catch (e) { /* unsupported (e.g. iPhone Safari) */ }
 }
 document.getElementById('fsBtn').addEventListener('click', e => { e.stopPropagation(); toggleFullscreen(); });
+
+// ── Remote fullscreen (driven from the Control window) ───────────────────────
+// Once this window is dragged onto a non-touch projector screen, the operator
+// can't tap ⛶ here — so the Control sends a command. Real fullscreen needs a
+// gesture in THIS window; the Control delegates its click's activation via
+// postMessage (Capability Delegation). If that's unavailable, we fall back to
+// resizing the popup to fill whatever screen it currently sits on.
+function maximizeToScreen() {
+  try {
+    window.moveTo(screen.availLeft || 0, screen.availTop || 0);
+    window.resizeTo(screen.availWidth, screen.availHeight);
+  } catch (e) { /* not a script-opened popup, or blocked */ }
+}
+function enterFullscreen() {
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!req) { maximizeToScreen(); return; }
+  let p;
+  try { p = req.call(el); } catch (e) { maximizeToScreen(); return; }
+  Promise.resolve(p).catch(() => maximizeToScreen());
+}
+window.addEventListener('message', e => {
+  if (e.origin !== location.origin) return;
+  if (e.data && e.data.type === 'go-fullscreen') enterFullscreen();
+});
 document.addEventListener('dblclick', toggleFullscreen);
 document.addEventListener('keydown', e => {
   if (e.key === 'f' || e.key === 'F') toggleFullscreen();

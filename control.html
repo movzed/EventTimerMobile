@@ -224,6 +224,7 @@
   <div class="header-btns">
     <button class="hbtn" id="btnWake" title="Mantener pantalla encendida">☀ Despierto</button>
     <button class="hbtn" id="btnOpenDisplay" title="Abrir la pantalla del timer">⧉ Display</button>
+    <button class="hbtn" id="btnDisplayFs" title="Poner el Display a pantalla completa en la otra pantalla (remoto)">⛶ Pantalla</button>
   </div>
 </header>
 
@@ -564,15 +565,34 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && wakeWanted && !wakeLock) acquireWake();
 });
 
-// ── Open display ─────────────────────────────────────────────────────────────
-// Open as a separate, draggable popup window (NOT a tab) by passing a size, so
-// it can be moved onto a second screen. The Display's ⛶ button then toggles
-// real fullscreen on whichever screen it sits, and back to this floating window.
+// ── Open / remote-control the display window ─────────────────────────────────
+// Open as a separate, draggable popup window (NOT a tab) by passing a size, so it
+// can be moved onto a second screen. Keep the reference so we can drive it
+// remotely: the projector screen is usually not touch, so once the Display is
+// dragged over there the operator can't tap its own ⛶ button.
+let displayWin = null;
 $('btnOpenDisplay').addEventListener('click', () => {
   const W = 960, H = 540;
   const feats = `popup=yes,width=${W},height=${H},left=140,top=140,menubar=no,toolbar=no,location=no,status=no`;
-  const win = window.open('display.html', 'et-display', feats);
-  if (win) { try { win.focus(); } catch (_) {} }
+  displayWin = window.open('display.html', 'et-display', feats);
+  if (displayWin) { try { displayWin.focus(); } catch (_) {} }
+});
+
+// Remote fullscreen. The Fullscreen API needs a user gesture IN the Display
+// window, so we hand this click's activation to it via Capability Delegation
+// (postMessage with delegate:'fullscreen' — Chromium). Browsers without it still
+// receive the message and the Display falls back to maximizing to fill its screen.
+$('btnDisplayFs').addEventListener('click', () => {
+  if (displayWin && !displayWin.closed) {
+    try { displayWin.focus(); } catch (_) {}
+    try {
+      displayWin.postMessage({ type: 'go-fullscreen' }, { targetOrigin: location.origin, delegate: 'fullscreen' });
+      return;
+    } catch (_) { /* options form unsupported → plain postMessage below */ }
+    try { displayWin.postMessage({ type: 'go-fullscreen' }, location.origin); return; } catch (_) {}
+  }
+  // No handle to the window (e.g. Control was reloaded) → best effort over the bus.
+  bus.post({ type: 'cmd', action: 'fullscreen' });
 });
 
 // ── Respond to a freshly opened display asking for state ─────────────────────
