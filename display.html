@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Event Timer — Display</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Display">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #000;
+      color: #fff;
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      transition: background 0.6s ease;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #timerDisplay {
+      font-size: clamp(72px, 22vw, 380px);
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      letter-spacing: -2px;
+      color: #ffffff;
+      transition: color 0.5s ease;
+      text-shadow: 0 0 60px rgba(255,255,255,0.15);
+    }
+
+    #clockDisplay {
+      font-size: clamp(56px, 18vw, 320px);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      color: #ffffff;
+      display: none;
+    }
+
+    #logoDisplay { max-width: 80vw; max-height: 80vh; object-fit: contain; display: none; }
+
+    #idlePlaceholder {
+      font-size: 14px; font-weight: 500; color: #1e1e1e; letter-spacing: 3px;
+      text-transform: uppercase; display: none; flex-direction: column;
+      align-items: center; gap: 8px;
+    }
+    #idlePlaceholder .dot { width: 6px; height: 6px; border-radius: 50%; background: #1e1e1e; }
+
+    #messageBar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      padding: 18px 48px calc(18px + env(safe-area-inset-bottom));
+      text-align: center; font-size: clamp(16px, 3.2vw, 42px); font-weight: 600;
+      background: rgba(0, 0, 0, 0.72); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+      color: #ffffff; transform: translateY(110%);
+      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    #messageBar.visible { transform: translateY(0); }
+
+    #statusDot {
+      position: fixed; top: max(14px, env(safe-area-inset-top)); left: 14px;
+      width: 8px; height: 8px; border-radius: 50%; background: #333; transition: background 0.3s;
+    }
+    #statusDot.running { background: #238636; }
+    #statusDot.paused  { background: #9e6a03; }
+
+    /* Floating controls: fullscreen top-right, close bottom-left. Auto-hide. */
+    .et-ctrl {
+      position: fixed; z-index: 10;
+      width: 48px; height: 48px; border-radius: 12px;
+      background: rgba(20,20,22,0.55); border: 1px solid rgba(255,255,255,0.18);
+      color: #e6e6e6; font-size: 22px; cursor: pointer;
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.3s ease, background 0.15s, border-color 0.15s, transform 0.1s;
+    }
+    body.show-controls .et-ctrl { opacity: 1; pointer-events: auto; }
+    .et-ctrl:hover  { background: rgba(40,40,44,0.85); border-color: rgba(255,255,255,0.35); }
+    .et-ctrl:active { transform: scale(0.92); }
+    #fsBtn { top: max(14px, env(safe-area-inset-top)); right: 14px; }
+    #closeBtn { bottom: calc(14px + env(safe-area-inset-bottom)); left: 14px; color: #ff7b72; }
+    #closeBtn:hover { border-color: #f85149; }
+
+    body.state-warn   { background: #0f0a00; }
+    body.state-urgent { background: #0f0000; }
+    body.state-done   { background: #0f0000; }
+    body.state-ok     { background: #000000; }
+
+    .color-ok     { color: #ffffff; }
+    .color-warn   { color: #e3b341; }
+    .color-urgent { color: #f85149; }
+    .color-done   { color: #f85149; }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+    .pulse { animation: pulse 1s ease-in-out infinite; }
+  </style>
+</head>
+<body class="state-ok">
+
+  <div id="timerDisplay">25:00</div>
+  <div id="clockDisplay">00:00:00</div>
+  <img id="logoDisplay" src="" alt="">
+  <div id="idlePlaceholder">
+    <div class="dot"></div>
+    <span>Event Timer</span>
+  </div>
+
+  <div id="messageBar"></div>
+  <div id="statusDot"></div>
+  <button id="fsBtn" class="et-ctrl" title="Pantalla completa (F · doble toque)">⛶</button>
+  <button id="closeBtn" class="et-ctrl" title="Cerrar y volver al Control">✕</button>
+
+<script src="common.js"></script>
+<script>
+const bus = ET.makeBus();
+
+const timerEl   = document.getElementById('timerDisplay');
+const clockEl   = document.getElementById('clockDisplay');
+const logoEl    = document.getElementById('logoDisplay');
+const idleEl    = document.getElementById('idlePlaceholder');
+const msgBar    = document.getElementById('messageBar');
+const statusDot = document.getElementById('statusDot');
+
+let S = ET.loadJSON(ET.KEY_STATE, null);  // latest state (cold paint from storage)
+let logoLoaded = false;
+let logoVerSeen = -1;
+
+function setLogo(dataUrl) {
+  if (!dataUrl) return;
+  logoEl.onload = () => { logoLoaded = true; };
+  logoEl.src = dataUrl;
+}
+
+// Pull an existing logo from storage on cold open.
+(function () {
+  const stored = ET.Logo.get();
+  if (stored) setLogo(stored);
+})();
+
+function computeRemaining() {
+  if (!S) return 0;
+  if (S.running) return Math.max(0, Math.round((S.endAt - Date.now()) / 1000 * (S.speed || 1)));
+  return S.timeLeft;
+}
+
+function show(el, d) { el.style.display = d || 'block'; }
+function hide(el) { el.style.display = 'none'; }
+
+function render() {
+  if (!S) return;
+  const mode = S.mode || 'timer';
+
+  hide(timerEl); hide(clockEl); hide(logoEl); hide(idleEl);
+
+  if (mode === 'timer') {
+    show(timerEl);
+    const r = computeRemaining();
+    const total = S.totalSecs || 0;
+    timerEl.textContent = ET.fmt(r);
+
+    timerEl.classList.remove('pulse', 'color-ok', 'color-warn', 'color-urgent', 'color-done');
+    document.body.classList.remove('state-ok', 'state-warn', 'state-urgent', 'state-done');
+
+    if (!S.running && r === total) {
+      timerEl.classList.add('color-ok');     document.body.classList.add('state-ok');
+    } else if (r <= 0) {
+      timerEl.classList.add('color-done', 'pulse'); document.body.classList.add('state-done');
+    } else if (r <= S.urgent) {
+      timerEl.classList.add('color-urgent'); document.body.classList.add('state-urgent');
+    } else if (r <= S.warn) {
+      timerEl.classList.add('color-warn');   document.body.classList.add('state-warn');
+    } else {
+      timerEl.classList.add('color-ok');     document.body.classList.add('state-ok');
+    }
+
+    if (r <= 0) statusDot.className = '';
+    else if (S.running) statusDot.className = 'running';
+    else statusDot.className = (r < total) ? 'paused' : '';
+
+  } else if (mode === 'clock') {
+    show(clockEl);
+    clockEl.textContent = ET.clockStr();
+    document.body.className = 'state-ok';
+    statusDot.className = '';
+
+  } else if (mode === 'logo') {
+    if (logoLoaded && logoEl.src) show(logoEl);
+    else show(idleEl, 'flex');
+    document.body.className = 'state-ok';
+    statusDot.className = '';
+  }
+
+  // Message bar
+  if (S.message && S.message.trim()) {
+    msgBar.textContent = S.message;
+    msgBar.classList.add('visible');
+  } else {
+    msgBar.classList.remove('visible');
+  }
+}
+
+// ── Incoming messages ────────────────────────────────────────────────────────
+bus.on(msg => {
+  if (!msg) return;
+  if (msg.type === 'state') {
+    S = msg;
+    if (S.hasLogo && S.logoVer !== logoVerSeen) {
+      logoVerSeen = S.logoVer;
+      const stored = ET.Logo.get();
+      if (stored) { logoLoaded = false; setLogo(stored); }
+    }
+    render();
+  } else if (msg.type === 'logo') {
+    logoVerSeen = msg.logoVer;
+    if (msg.dataUrl) { ET.Logo.set(msg.dataUrl); logoLoaded = false; setLogo(msg.dataUrl); }
+    render();
+  }
+});
+
+// Ask the control for the current state (in case the display opened later).
+bus.post({ type: 'hello' });
+
+// ── Local animation loop (smooth even if Control is throttled) ───────────────
+setInterval(render, 200);
+
+// ── Fullscreen ───────────────────────────────────────────────────────────────
+function toggleFullscreen() {
+  const el = document.documentElement;
+  const isFs = document.fullscreenElement || document.webkitFullscreenElement;
+  try {
+    if (!isFs) (el.requestFullscreen || el.webkitRequestFullscreen || function () {}).call(el);
+    else (document.exitFullscreen || document.webkitExitFullscreen || function () {}).call(document);
+  } catch (e) { /* unsupported (e.g. iPhone Safari) */ }
+}
+document.getElementById('fsBtn').addEventListener('click', e => { e.stopPropagation(); toggleFullscreen(); });
+document.addEventListener('dblclick', toggleFullscreen);
+document.addEventListener('keydown', e => {
+  if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+  if (e.key === 'Escape' && document.fullscreenElement) document.exitFullscreen();
+});
+
+// ── Close / back to Control ──────────────────────────────────────────────────
+// window.close() only succeeds if this tab was opened by script (the Control's
+// "⧉ Display" button). Otherwise fall back to navigating back to the Control.
+function closeDisplay() {
+  const exitFs = document.exitFullscreen || document.webkitExitFullscreen;
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    try { exitFs.call(document); } catch (_) {}
+  }
+  window.close();
+  setTimeout(() => { window.location.href = 'control.html'; }, 200);
+}
+document.getElementById('closeBtn').addEventListener('click', e => { e.stopPropagation(); closeDisplay(); });
+
+// ── Auto-hiding controls (video-player style: tap/move to reveal) ─────────────
+let controlsTimer = null;
+function showControls() {
+  document.body.classList.add('show-controls');
+  clearTimeout(controlsTimer);
+  controlsTimer = setTimeout(() => document.body.classList.remove('show-controls'), 3000);
+}
+['mousemove', 'touchstart', 'keydown'].forEach(ev =>
+  document.addEventListener(ev, showControls, { passive: true })
+);
+showControls();
+
+// ── Service worker (PWA offline) ─────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+render();
+</script>
+</body>
+</html>
