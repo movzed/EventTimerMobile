@@ -1,0 +1,7 @@
+# Capacitor / Node — generados, no van al repo de GitHub Pages
+node_modules/
+www/
+.DS_Store
+
+# El proyecto android/ SÍ se versiona (lleva config, manifest, firma).
+# Sus artefactos de build los ignora el android/.gitignore que crea Capacitor.

@@ -100,17 +100,44 @@
     body.state-done   { background: #0f0000; }
     body.state-ok     { background: #000000; }
 
-    .color-ok     { color: #ffffff; }
-    .color-warn   { color: #e3b341; }
-    .color-urgent { color: #f85149; }
-    .color-done   { color: #f85149; }
+    /* Deben ganar al selector de ID #timerDisplay (especificidad), si no el reloj
+       se queda siempre blanco y nunca avisa en naranja/rojo. */
+    #timerDisplay.color-ok     { color: #ffffff; }
+    #timerDisplay.color-warn   { color: #e3b341; }
+    #timerDisplay.color-urgent { color: #f85149; }
+    #timerDisplay.color-done   { color: #f85149; }
 
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
     .pulse { animation: pulse 1s ease-in-out infinite; }
+
+    /* Barra de progreso (tiempo restante) — encima del reloj, color sincronizado */
+    #progressWrap {
+      position: fixed;
+      top: max(20px, env(safe-area-inset-top));
+      left: 4vw; right: 4vw;
+      height: clamp(8px, 1.4vh, 18px);
+      background: rgba(255,255,255,0.10);
+      border-radius: 999px;
+      overflow: hidden;
+      display: none;
+      z-index: 4;
+    }
+    #progressBar {
+      height: 100%;
+      width: 100%;
+      background: #3fb950;
+      border-radius: 999px;
+      transition: width 0.25s linear, background 0.4s ease;
+    }
+    #progressBar.color-ok     { background: #3fb950; }
+    #progressBar.color-warn   { background: #e3b341; }
+    #progressBar.color-urgent { background: #f85149; }
+    #progressBar.color-done   { background: #f85149; }
   </style>
 </head>
 <body class="state-ok">
 
+  <div id="progressWrap"><div id="progressBar"></div></div>
   <div id="timerDisplay">25:00</div>
   <div id="clockDisplay">00:00:00</div>
   <img id="logoDisplay" src="" alt="">
@@ -134,6 +161,8 @@ const logoEl    = document.getElementById('logoDisplay');
 const idleEl    = document.getElementById('idlePlaceholder');
 const msgBar    = document.getElementById('messageBar');
 const statusDot = document.getElementById('statusDot');
+const progressWrap = document.getElementById('progressWrap');
+const progressBar  = document.getElementById('progressBar');
 
 let S = ET.loadJSON(ET.KEY_STATE, null);  // latest state (cold paint from storage)
 let logoLoaded = false;
@@ -168,24 +197,30 @@ function render() {
 
   if (mode === 'timer') {
     show(timerEl);
+    progressWrap.style.display = 'block';
     const r = computeRemaining();
     const total = S.totalSecs || 0;
     timerEl.textContent = ET.fmt(r);
 
+    // Un solo estado, aplicado a reloj + fondo + barra de progreso.
+    let st;
+    if (!S.running && r === total) st = 'ok';
+    else if (r <= 0)              st = 'done';
+    else if (r <= S.urgent)       st = 'urgent';
+    else if (r <= S.warn)         st = 'warn';
+    else                          st = 'ok';
+
     timerEl.classList.remove('pulse', 'color-ok', 'color-warn', 'color-urgent', 'color-done');
     document.body.classList.remove('state-ok', 'state-warn', 'state-urgent', 'state-done');
+    progressBar.classList.remove('color-ok', 'color-warn', 'color-urgent', 'color-done');
+    timerEl.classList.add('color-' + st);
+    document.body.classList.add('state-' + st);
+    progressBar.classList.add('color-' + st);
+    if (st === 'done') timerEl.classList.add('pulse');
 
-    if (!S.running && r === total) {
-      timerEl.classList.add('color-ok');     document.body.classList.add('state-ok');
-    } else if (r <= 0) {
-      timerEl.classList.add('color-done', 'pulse'); document.body.classList.add('state-done');
-    } else if (r <= S.urgent) {
-      timerEl.classList.add('color-urgent'); document.body.classList.add('state-urgent');
-    } else if (r <= S.warn) {
-      timerEl.classList.add('color-warn');   document.body.classList.add('state-warn');
-    } else {
-      timerEl.classList.add('color-ok');     document.body.classList.add('state-ok');
-    }
+    // Barra = proporción de tiempo restante.
+    const pct = total > 0 ? Math.max(0, Math.min(100, (r / total) * 100)) : 0;
+    progressBar.style.width = pct + '%';
 
     if (r <= 0) statusDot.className = '';
     else if (S.running) statusDot.className = 'running';
@@ -194,13 +229,17 @@ function render() {
   } else if (mode === 'clock') {
     show(clockEl);
     clockEl.textContent = ET.clockStr();
-    document.body.className = 'state-ok';
+    document.body.classList.remove('state-warn', 'state-urgent', 'state-done');
+    document.body.classList.add('state-ok');
+    progressWrap.style.display = 'none';
     statusDot.className = '';
 
   } else if (mode === 'logo') {
     if (logoLoaded && logoEl.src) show(logoEl);
     else show(idleEl, 'flex');
-    document.body.className = 'state-ok';
+    document.body.classList.remove('state-warn', 'state-urgent', 'state-done');
+    document.body.classList.add('state-ok');
+    progressWrap.style.display = 'none';
     statusDot.className = '';
   }
 
@@ -214,7 +253,7 @@ function render() {
 }
 
 // ── Incoming messages ────────────────────────────────────────────────────────
-bus.on(msg => {
+function handleMsg(msg) {
   if (!msg) return;
   if (msg.type === 'state') {
     S = msg;
@@ -229,7 +268,9 @@ bus.on(msg => {
     if (msg.dataUrl) { ET.Logo.set(msg.dataUrl); logoLoaded = false; setLogo(msg.dataUrl); }
     render();
   }
-});
+}
+bus.on(handleMsg);
+window.__et_apply = handleMsg;   // puente nativo: la 2ª pantalla recibe el estado por aquí
 
 // Ask the control for the current state (in case the display opened later).
 bus.post({ type: 'hello' });

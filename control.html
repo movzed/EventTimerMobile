@@ -226,7 +226,7 @@
   <h1>Event Timer <span class="running-dot" id="runningDot"></span></h1>
   <div class="header-btns">
     <button class="hbtn" id="btnWake" title="Mantener pantalla encendida">☀ Despierto</button>
-    <a class="hbtn" id="btnOpenDisplay" href="display.html" target="_blank" rel="noopener" title="Abrir el Monitor (mantén pulsado → «Abrir en ventana nueva» para arrastrarlo a la pantalla extendida)">⧉ Monitor</a>
+    <button class="hbtn" id="btnOpenDisplay" title="Mostrar el reloj a pantalla completa en la pantalla externa">⧉ Monitor</button>
   </div>
 </header>
 
@@ -306,6 +306,17 @@
   </div>
 </div>
 
+<!-- Confirmación de salida (in-page; window.confirm no se muestra en el WebView) -->
+<div id="exitModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.65); align-items:center; justify-content:center;">
+  <div style="background:#161b22; border:1px solid #30363d; border-radius:12px; padding:22px 20px; max-width:300px; margin:16px; text-align:center;">
+    <p style="margin-bottom:18px; font-size:15px; line-height:1.4; color:#c9d1d9;">Hay un temporizador en marcha.<br>¿Salir de Event Timer?</p>
+    <div style="display:flex; gap:8px;">
+      <button id="exitCancel" class="btn-sm" style="flex:1;">Cancelar</button>
+      <button id="exitConfirm" class="btn-sm" style="flex:1; background:#da3633; border-color:#da3633; color:#fff;">Salir</button>
+    </div>
+  </div>
+</div>
+
 <script src="common.js"></script>
 <script>
 const bus   = ET.makeBus();
@@ -319,6 +330,60 @@ let lastSec    = null;
 
 const $ = id => document.getElementById(id);
 const timerInput = $('timerInput');
+
+// ── Segunda pantalla nativa (Android Presentation / iOS external screen) ─────
+// En nativo, "Monitor" abre display.html a pantalla completa en la pantalla
+// externa (proyector) vía el plugin SecondaryDisplay; en web abre una pestaña.
+const SD = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SecondaryDisplay;
+let displayShown = false;
+function pushToDisplay(msg) { if (SD) { try { SD.push(msg); } catch (e) {} } }
+
+let displayBusy = false;
+$('btnOpenDisplay').addEventListener('click', async () => {
+  if (!SD) { window.open('display.html', '_blank'); return; }   // navegador web
+  if (displayBusy) return;                                       // evita doble-tap durante el await
+  displayBusy = true;
+  try {
+    if (!displayShown) {
+      const r = await SD.show();
+      if (r && r.shown) {
+        displayShown = true;
+        $('btnOpenDisplay').classList.add('active');
+        emit();                                          // pinta el estado actual
+        const logo = ET.Logo.get();
+        if (logo) pushToDisplay({ type: 'logo', dataUrl: logo, logoVer });
+      } else {
+        alert('No hay ninguna segunda pantalla conectada.');
+      }
+    } else {
+      await SD.hide();
+      displayShown = false;
+      $('btnOpenDisplay').classList.remove('active');
+    }
+  } catch (e) { alert('Segunda pantalla: ' + e); }
+  finally { displayBusy = false; }
+});
+
+// ── Botón BACK físico (Android): no cerrar la app a mitad de evento ──────────
+// window.confirm() NO se muestra en el WebView de Capacitor → modal propio.
+const AppPlugin = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App)
+  || (window.Capacitor && window.Capacitor.registerPlugin && window.Capacitor.registerPlugin('App'));
+if (AppPlugin) {
+  $('exitCancel').addEventListener('click', () => { $('exitModal').style.display = 'none'; });
+  $('exitConfirm').addEventListener('click', () => AppPlugin.exitApp());
+  AppPlugin.addListener('backButton', () => {
+    if ($('exitModal').style.display === 'flex') { $('exitModal').style.display = 'none'; return; }
+    if (displayShown) {                 // 1º: cierra la 2ª pantalla (proyector)
+      if (SD) SD.hide();
+      displayShown = false;
+      $('btnOpenDisplay').classList.remove('active');
+    } else if (model.running) {         // 2º: protege un temporizador en marcha
+      $('exitModal').style.display = 'flex';
+    } else {                            // 3º: salir normal
+      AppPlugin.exitApp();
+    }
+  });
+}
 
 // ── Settings persistence ─────────────────────────────────────────────────────
 function restoreSettings() {
@@ -358,6 +423,7 @@ function emit() {
   };
   bus.post(state);
   ET.saveJSON(ET.KEY_STATE, state);
+  pushToDisplay(state);
   saveSettings();
 }
 
@@ -532,6 +598,7 @@ $('logoFile').addEventListener('change', e => {
     $('logoFilename').style.display = 'block';
     $('logoFilename').textContent = file.name;
     bus.post({ type: 'logo', dataUrl, logoVer });
+    pushToDisplay({ type: 'logo', dataUrl, logoVer });
     emit();
   };
   reader.readAsDataURL(file);
