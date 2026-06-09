@@ -236,7 +236,7 @@
 <body>
 
 <header>
-  <h1>Event Timer <span class="running-dot" id="runningDot"></span></h1>
+  <h1>Event Timer 2.3 <span class="running-dot" id="runningDot"></span></h1>
   <div class="header-btns">
     <button class="hbtn" id="btnWake" title="Mantener pantalla encendida">☀ Despierto</button>
     <button class="hbtn" id="btnOpenDisplay" title="Mostrar el reloj a pantalla completa en la pantalla externa">⧉ Monitor</button>
@@ -256,6 +256,7 @@
            inputmode="numeric" autocomplete="off">
   </div>
   <p class="timer-hint">Toca para editar · formato MM:SS</p>
+  <div id="finishHint" style="display:none; text-align:center; font-size:12px; color:#a78bfa; margin:-2px 0 8px;">⚡ Fin real  00:00:00</div>
 
   <div class="controls">
     <button class="btn btn-play" id="btnPlay">▶</button>
@@ -448,6 +449,20 @@ function emit() {
   ET.saveJSON(ET.KEY_STATE, state);
   pushToDisplay(state);
   saveSettings();
+  updateFinishHint();
+}
+
+// Hora real de finalización (solo operador): con ⚡ activo y el reloj en marcha,
+// muestra a qué hora terminará de verdad. model.endAt YA es ese instante real
+// (start()/setSpeed() lo anclan descontando la velocidad x1.1).
+function updateFinishHint() {
+  const el = $('finishHint');
+  if (fastMode && model.running) {
+    el.textContent = '⚡ Fin real  ' + new Date(model.endAt).toTimeString().slice(0, 8);
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
 }
 
 // ── Run UI ───────────────────────────────────────────────────────────────────
