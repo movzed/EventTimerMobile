@@ -6,7 +6,8 @@
   "scripts": {
     "copy:web": "rm -rf www && mkdir www && cp index.html control.html display.html common.js manifest.webmanifest sw.js www/ && cp -r icons www/",
     "sync": "npm run copy:web && npx cap sync",
-    "open:android": "npx cap open android"
+    "open:android": "npx cap open android",
+    "open:ios": "npx cap open ios"
   },
   "repository": {
     "type": "git",
@@ -24,7 +25,8 @@
     "@capacitor/android": "^8.4.0",
     "@capacitor/app": "^8.1.0",
     "@capacitor/cli": "^8.4.0",
-    "@capacitor/core": "^8.4.0"
+    "@capacitor/core": "^8.4.0",
+    "@capacitor/ios": "^8.4.0"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5"

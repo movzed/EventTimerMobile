@@ -1,5 +1,5 @@
 // Event Timer — service worker. Caches the app shell so it runs offline at events.
-const CACHE = 'event-timer-v9';
+const CACHE = 'event-timer-v10';
 const ASSETS = [
   './',
   './index.html',

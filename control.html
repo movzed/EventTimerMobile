@@ -177,6 +177,19 @@
     }
     .threshold input:focus { border-color: #388bfd; }
 
+    /* OSC */
+    .osc-row { display: flex; gap: 8px; margin-bottom: 6px; }
+    .osc-row input {
+      width: 92px; background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+      color: #c9d1d9; padding: 9px 10px; font-size: 14px; text-align: center; outline: none;
+      transition: border-color 0.15s;
+    }
+    .osc-row input:focus { border-color: #388bfd; }
+    .osc-row #btnOsc { flex: 1; }
+    #btnOsc.active { background: #238636; border-color: #238636; color: #fff; }
+    #btnOsc.active:hover { background: #2ea043; border-color: #2ea043; color: #fff; }
+    .osc-status { font-size: 11px; color: #484f58; margin-bottom: 14px; word-break: break-word; }
+
     hr { border: none; border-top: 1px solid #21262d; margin: 14px 0; }
 
     /* Message */
@@ -273,6 +286,16 @@
       <label>🔴 Urgente</label>
       <input type="number" id="urgentMin" value="2" min="0" max="999">
     </div>
+  </div>
+
+  <!-- OSC — control remoto (solo build nativo; el navegador no puede hacer bind UDP) -->
+  <div id="oscSection" style="display:none">
+    <div class="section-label">OSC — control remoto</div>
+    <div class="osc-row">
+      <input type="number" id="oscPort" value="7700" min="1024" max="65535" inputmode="numeric">
+      <button class="btn-sm" id="btnOsc">Off</button>
+    </div>
+    <div class="osc-status" id="oscStatus">Inactivo</div>
   </div>
 </div>
 
@@ -470,6 +493,36 @@ function stopAll() {
   releaseWake();
   timerInput.value = ET.fmt(model.timeLeft);
 }
+// ■ Detener: para Y resetea al inicio (distinto de pause, que mantiene el tiempo).
+function stopTimer() {
+  model.stop();
+  setRunUI(false);
+  stopLoop();
+  releaseWake();
+  timerInput.value = ET.fmt(model.timeLeft);
+  emit();
+}
+// ↺ Resetear al total configurado (deja parado).
+function resetTimer() {
+  stopAll();
+  model.reset();
+  timerInput.value = ET.fmt(model.timeLeft);
+  emit();
+}
+// ± Ajuste de tiempo (re-ancla mid-run para que no salte).
+function adjust(delta) {
+  if (!delta) return;
+  if (model.running) {
+    model.endAt += Math.round(delta / model.speed * 1000);
+    timerInput.value = ET.fmt(model.remaining());
+  } else {
+    model.timeLeft  = Math.max(0, model.timeLeft  + delta);
+    model.totalSecs = Math.max(0, model.totalSecs + delta);
+    timerInput.value = ET.fmt(model.timeLeft);
+  }
+  lastSec = null;
+  emit();
+}
 
 // ── Mode tabs ────────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
@@ -505,43 +558,26 @@ timerInput.addEventListener('keydown', e => { if (e.key === 'Enter') timerInput.
 
 // ── Controls ─────────────────────────────────────────────────────────────────
 $('btnPlay').addEventListener('click', () => { if (model.running) pause(); else play(); });
-$('btnStop').addEventListener('click', () => { stopAll(); emit(); });
-$('btnReset').addEventListener('click', () => {
-  stopAll();
-  model.reset();
-  timerInput.value = ET.fmt(model.timeLeft);
-  emit();
-});
+$('btnStop').addEventListener('click', stopTimer);    // ■ parar y resetear al inicio (≠ pause)
+$('btnReset').addEventListener('click', resetTimer);  // ↺ resetear al total
 
 // ── Quick adjust ─────────────────────────────────────────────────────────────
 document.querySelectorAll('[data-adj]').forEach(b => {
-  b.addEventListener('click', () => {
-    const delta = parseInt(b.dataset.adj, 10);
-    if (model.running) {
-      model.endAt += Math.round(delta / model.speed * 1000);
-      const r = model.remaining();
-      timerInput.value = ET.fmt(r);
-    } else {
-      model.timeLeft = Math.max(0, model.timeLeft + delta);
-      model.totalSecs = Math.max(0, model.totalSecs + delta);
-      timerInput.value = ET.fmt(model.timeLeft);
-    }
-    lastSec = null;
-    emit();
-  });
+  b.addEventListener('click', () => adjust(parseInt(b.dataset.adj, 10)));
 });
 
 // ── Fast mode (x1.1) ─────────────────────────────────────────────────────────
 // Runs the countdown 10% faster (re-anchors mid-run so it never jumps). Handy
 // when a speaker is overrunning. Session-only: resets to normal on reload.
 let fastMode = false;
-$('btnFast').addEventListener('click', () => {
-  fastMode = !fastMode;
+function setFast(on) {
+  fastMode = !!on;
   $('btnFast').classList.toggle('active', fastMode);
   model.setSpeed(fastMode ? 1.1 : 1.0);
   lastSec = null;
   emit();
-});
+}
+$('btnFast').addEventListener('click', () => setFast(!fastMode));
 
 // ── Presets ──────────────────────────────────────────────────────────────────
 function renderPresets() {
@@ -581,6 +617,16 @@ $('btnSavePreset').addEventListener('click', () => {
   renderPresets();
   $('presetName').value = '';
 });
+// Carga el preset N (1-based, en el orden de la lista) — usado por OSC /preset/N.
+function loadPresetByNumber(n) {
+  const list = ET.Presets.all();
+  if (n >= 1 && n <= list.length) {
+    stopAll();
+    model.setTime(ET.parse(list[n - 1].time));
+    timerInput.value = ET.fmt(model.timeLeft);
+    emit();
+  }
+}
 
 // ── Logo ─────────────────────────────────────────────────────────────────────
 $('btnPickLogo').addEventListener('click', () => $('logoFile').click());
@@ -644,8 +690,76 @@ bus.on(msg => {
   }
 });
 
+// ── OSC remoto (control externo, solo build nativo) ──────────────────────────
+// El WebView no puede hacer bind UDP; el plugin nativo OscReceiver recibe los
+// paquetes y nos llama aquí. Mapea cada dirección OSC a la misma acción que el
+// botón equivalente, así stop/pause/thunder se comportan idénticos por OSC y UI.
+window.__et_osc = function (addr, args) {
+  try {
+    let a = String(addr || '').toLowerCase();
+    if (a.indexOf('/eventtimer/') === 0) a = '/' + a.slice(12);
+    else if (a.indexOf('/timer/') === 0) a = '/' + a.slice(7);
+    args = Array.isArray(args) ? args : [];
+
+    if (a === '/play')          { if (model.running) pause(); else play(); }
+    else if (a === '/pause')    { if (model.running) pause(); }
+    else if (a === '/stop')     { stopTimer(); }              // para y resetea (≠ pause)
+    else if (a === '/reset')    { resetTimer(); }
+    else if (a === '/thunder' || a === '/fast' || a === '/speed') {
+      let on;
+      if (args.length) {
+        const v = args[0];
+        on = (typeof v === 'boolean') ? v : (Number(v) !== 0);  // ≠0 / true → on, 0 / false → off
+      } else on = !fastMode;                                    // sin arg → alterna
+      setFast(on);
+    }
+    else if (a === '/plus'  || a === '/+1') { adjust(60); }
+    else if (a === '/minus' || a === '/-1') { adjust(-60); }
+    else if (a === '/adjust') { if (args.length) adjust(parseInt(args[0], 10) || 0); }
+    else if (a.indexOf('/preset/') === 0) {
+      const n = parseInt(a.slice(8), 10);
+      if (!isNaN(n)) loadPresetByNumber(n);
+    }
+    else if (a === '/preset') { if (args.length) loadPresetByNumber(parseInt(args[0], 10)); }
+  } catch (e) {}
+};
+
+// Conexión con el plugin nativo + UI de puerto/on-off (oculta en navegador).
+const OSC = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.OscReceiver;
+let oscOn = false;
+if (OSC) {
+  $('oscSection').style.display = 'block';
+  $('btnOsc').addEventListener('click', async () => {
+    try {
+      if (!oscOn) {
+        const port = Math.min(65535, Math.max(1024, parseInt($('oscPort').value, 10) || 7700));
+        const r = await OSC.start({ port });
+        if (r && r.running) {
+          oscOn = true;
+          $('btnOsc').textContent = 'On';
+          $('btnOsc').classList.add('active');
+          $('oscStatus').textContent = '● UDP :' + r.port + ' · /play /pause /stop /reset /thunder /adjust /preset/N';
+        } else {
+          $('oscStatus').textContent = 'No se pudo abrir el puerto';
+        }
+      } else {
+        await OSC.stop();
+        oscOn = false;
+        $('btnOsc').textContent = 'Off';
+        $('btnOsc').classList.remove('active');
+        $('oscStatus').textContent = 'Inactivo';
+      }
+    } catch (e) {
+      $('btnOsc').classList.remove('active');
+      $('oscStatus').textContent = 'Error: ' + (e && e.message ? e.message : e);
+    }
+  });
+}
+
 // ── Service worker (PWA offline) ─────────────────────────────────────────────
-if ('serviceWorker' in navigator) {
+// En el build nativo no registramos SW: el WebView sirve los assets del APK y
+// un SW solo añadiría una capa de caché que enmascara las actualizaciones.
+if ('serviceWorker' in navigator && !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 

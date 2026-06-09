@@ -129,6 +129,12 @@
     this.timeLeft = this.totalSecs;
     this.running = false;
   };
+  // Stop = detener Y resetear al inicio (distinto de pause, que mantiene el
+  // tiempo para reanudar). Idéntico a reset, pero con nombre semántico propio.
+  TimerModel.prototype.stop = function () {
+    this.timeLeft = this.totalSecs;
+    this.running = false;
+  };
   // Change rate. While running, re-anchor endAt so the shown time doesn't jump.
   TimerModel.prototype.setSpeed = function (factor) {
     if (this.running) {
