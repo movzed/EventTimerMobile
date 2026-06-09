@@ -240,6 +240,7 @@
   <div class="header-btns">
     <button class="hbtn" id="btnWake" title="Mantener pantalla encendida">☀ Despierto</button>
     <button class="hbtn" id="btnOpenDisplay" title="Mostrar el reloj a pantalla completa en la pantalla externa">⧉ Monitor</button>
+    <button class="hbtn" id="btnWeb" title="Servir el reloj por web a otros dispositivos (URL + QR)">🌐 Web</button>
   </div>
 </header>
 
@@ -330,6 +331,21 @@
   </div>
 </div>
 
+<!-- Pantalla web remota: URL + QR para que otros dispositivos abran el reloj en el navegador -->
+<div id="webPanel" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.7); align-items:center; justify-content:center;">
+  <div style="background:#161b22; border:1px solid #30363d; border-radius:14px; padding:22px 20px; max-width:340px; margin:16px; text-align:center;">
+    <div class="section-label" style="margin-bottom:10px;">Pantalla web remota</div>
+    <div id="webQr" style="width:220px; height:220px; margin:0 auto 12px; background:#fff; border-radius:10px; display:flex; align-items:center; justify-content:center; padding:10px;"></div>
+    <div style="font-size:13px; color:#c9d1d9; margin-bottom:4px;">Abre en otro dispositivo (navegador, OBS/vMix browser source):</div>
+    <div id="webUrl" style="font-size:15px; font-weight:700; color:#58a6ff; word-break:break-all; margin-bottom:6px;">—</div>
+    <div id="webHint" style="font-size:11px; color:#484f58; margin-bottom:16px;">El temporizador se sincroniza en vivo por WebSocket.</div>
+    <div style="display:flex; gap:8px;">
+      <button id="webStop" class="btn-sm" style="flex:1; background:#da3633; border-color:#da3633; color:#fff;">Detener</button>
+      <button id="webClose" class="btn-sm" style="flex:1;">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Confirmación de salida (in-page; window.confirm no se muestra en el WebView) -->
 <div id="exitModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.65); align-items:center; justify-content:center;">
   <div style="background:#161b22; border:1px solid #30363d; border-radius:12px; padding:22px 20px; max-width:300px; margin:16px; text-align:center;">
@@ -341,6 +357,7 @@
   </div>
 </div>
 
+<script src="qrcode.min.js"></script>
 <script src="common.js"></script>
 <script>
 const bus   = ET.makeBus();
@@ -387,6 +404,49 @@ $('btnOpenDisplay').addEventListener('click', async () => {
   } catch (e) { alert('Segunda pantalla: ' + e); }
   finally { displayBusy = false; }
 });
+
+// ── Servidor web remoto (URL + QR): sirve display.html a otros dispositivos ───
+// El WebView no puede abrir un socket de escucha → el servidor vive en un plugin
+// nativo (WebServer). Otros dispositivos abren http://<ip>:<puerto> y reciben el
+// estado en vivo por WebSocket. También sirve para OBS/vMix "browser source".
+const WSV = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.WebServer;
+let webOn = false;
+function pushToServer(msg) {
+  if (WSV && webOn) { try { WSV.broadcast({ json: JSON.stringify(msg) }); } catch (e) {} }
+}
+function renderQr(url) {
+  const box = $('webQr'); box.innerHTML = '';
+  try {
+    const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+    box.innerHTML = qr.createImgTag(5, 0);
+    const img = box.querySelector('img');
+    if (img) { img.style.width = '100%'; img.style.height = '100%'; img.style.imageRendering = 'pixelated'; }
+  } catch (e) { box.textContent = url; }
+}
+async function startWeb() {
+  const r = await WSV.start({ port: 9000 });
+  if (r && r.running && r.url) {
+    webOn = true;
+    $('btnWeb').classList.add('active');
+    $('webUrl').textContent = r.url;
+    renderQr(r.url);
+    emit();                                                       // pinta el estado actual
+    const logo = ET.Logo.get(); if (logo) pushToServer({ type: 'logo', dataUrl: logo, logoVer });
+  } else {
+    alert('No se pudo iniciar el servidor web.');
+  }
+}
+async function stopWeb() {
+  if (WSV) { try { await WSV.stop(); } catch (e) {} }
+  webOn = false; $('btnWeb').classList.remove('active');
+}
+$('btnWeb').addEventListener('click', async () => {
+  if (!WSV) { window.open('display.html', '_blank'); return; }    // navegador web: pestaña local
+  try { if (!webOn) await startWeb(); if (webOn) $('webPanel').style.display = 'flex'; }
+  catch (e) { alert('Servidor web: ' + (e && e.message ? e.message : e)); }
+});
+$('webClose').addEventListener('click', () => { $('webPanel').style.display = 'none'; });
+$('webStop').addEventListener('click', async () => { await stopWeb(); $('webPanel').style.display = 'none'; });
 
 // ── Botón BACK físico (Android): no cerrar la app a mitad de evento ──────────
 // window.confirm() NO se muestra en el WebView de Capacitor → modal propio.
@@ -448,6 +508,7 @@ function emit() {
   bus.post(state);
   ET.saveJSON(ET.KEY_STATE, state);
   pushToDisplay(state);
+  pushToServer(state);
   saveSettings();
   updateFinishHint();
 }
@@ -660,6 +721,7 @@ $('logoFile').addEventListener('change', e => {
     $('logoFilename').textContent = file.name;
     bus.post({ type: 'logo', dataUrl, logoVer });
     pushToDisplay({ type: 'logo', dataUrl, logoVer });
+    pushToServer({ type: 'logo', dataUrl, logoVer });
     emit();
   };
   reader.readAsDataURL(file);

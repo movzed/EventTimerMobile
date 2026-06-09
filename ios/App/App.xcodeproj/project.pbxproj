@@ -15,6 +15,7 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		7C4FBE83F7BE06A951443DAD /* WebServerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C259A89AB8DFCD5DFD6956 /* WebServerPlugin.swift */; };
 		7F5288BBABF157E7F85B9101 /* SecondaryDisplayPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BEB680EFC468E0AC72F56DC /* SecondaryDisplayPlugin.swift */; };
 		8A6F6E422F2E2AAB85FDA9AC /* OscReceiverPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C790BD57EB59529B5BB7CEBB /* OscReceiverPlugin.swift */; };
 /* End PBXBuildFile section */
@@ -30,6 +31,7 @@
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		5BEB680EFC468E0AC72F56DC /* SecondaryDisplayPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SecondaryDisplayPlugin.swift; sourceTree = "<group>"; };
+		83C259A89AB8DFCD5DFD6956 /* WebServerPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WebServerPlugin.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		C790BD57EB59529B5BB7CEBB /* OscReceiverPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OscReceiverPlugin.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -76,6 +78,7 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 				C790BD57EB59529B5BB7CEBB /* OscReceiverPlugin.swift */,
 				5BEB680EFC468E0AC72F56DC /* SecondaryDisplayPlugin.swift */,
+				83C259A89AB8DFCD5DFD6956 /* WebServerPlugin.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -164,6 +167,7 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				8A6F6E422F2E2AAB85FDA9AC /* OscReceiverPlugin.swift in Sources */,
 				7F5288BBABF157E7F85B9101 /* SecondaryDisplayPlugin.swift in Sources */,
+				7C4FBE83F7BE06A951443DAD /* WebServerPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

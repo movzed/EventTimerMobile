@@ -4,7 +4,7 @@
   "description": "",
   "main": "common.js",
   "scripts": {
-    "copy:web": "rm -rf www && mkdir www && cp index.html control.html display.html common.js manifest.webmanifest sw.js www/ && cp -r icons www/",
+    "copy:web": "rm -rf www && mkdir www && cp index.html control.html display.html common.js qrcode.min.js manifest.webmanifest sw.js www/ && cp -r icons www/",
     "sync": "npm run copy:web && npx cap sync",
     "open:android": "npx cap open android",
     "open:ios": "npx cap open ios"

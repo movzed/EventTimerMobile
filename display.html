@@ -272,6 +272,32 @@ function handleMsg(msg) {
 bus.on(handleMsg);
 window.__et_apply = handleMsg;   // puente nativo: la 2ª pantalla recibe el estado por aquí
 
+// ── Viewer remoto por WebSocket ──────────────────────────────────────────────
+// Cuando esta página se sirve por red desde el servidor del control (otro
+// dispositivo abre http://<ip>:<puerto>), recibe el estado por WebSocket. En el
+// bundle nativo (Capacitor, 2ª pantalla) NO aplica: usa __et_apply.
+(function () {
+  if (window.Capacitor) return;                                   // app nativa → __et_apply
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+  let attempts = 0, everConnected = false;
+  function connect() {
+    let ws;
+    try { ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws'); }
+    catch (e) { return retry(); }
+    ws.onopen    = () => { everConnected = true; attempts = 0; };
+    ws.onmessage = ev => { try { handleMsg(JSON.parse(ev.data)); } catch (e) {} };
+    ws.onclose   = retry;
+    ws.onerror   = () => { try { ws.close(); } catch (e) {} };
+  }
+  function retry() {
+    // Reconecta indefinidamente si alguna vez conectó; si nunca (p.ej. PWA sin
+    // servidor), abandona tras unos intentos para no malgastar batería.
+    if (!everConnected && ++attempts > 6) return;
+    setTimeout(connect, everConnected ? 1500 : 2500);
+  }
+  connect();
+})();
+
 // Ask the control for the current state (in case the display opened later).
 bus.post({ type: 'hello' });
 
